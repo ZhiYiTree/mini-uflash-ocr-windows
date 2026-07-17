@@ -1,0 +1,15 @@
+﻿WindowsProductName : Windows 10 Home China
+WindowsVersion     : 2009
+OsBuildNumber      : 26200
+OsArchitecture     : 64 位
+nvidia-smi:
+NVIDIA GeForce RTX 5060 Laptop GPU, 573.24, 8151 MiB
+py --list:
+-V:3.13 *        Python 3.13 (64-bit)
+Project Python:
+3.13.5 (tags/v3.13.5:6cb20a2, Jun 11 2025, 16:15:46) [MSC v.1943 64 bit (AMD64)]
+D:\Python\OCR\.venv\Scripts\python.exe
+2.11.0+cu128
+12.8
+True
+NVIDIA GeForce RTX 5060 Laptop GPU

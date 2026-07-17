@@ -1,0 +1,61 @@
+# --- Python / env ---
+.venv/
+venv/
+env/
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# --- IDE / OS ---
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# --- Large models & checkpoints (do NOT push) ---
+models/
+weights/*.pt
+weights/*.pth
+weights/*.bin
+weights/*.ckpt
+*.safetensors
+*.onnx
+
+# --- Training data & run artifacts ---
+train/data/
+train/runs/
+# keep small docs/manifests under train/ tracked
+
+# --- Runtime outputs ---
+webapp/outputs/
+webapp/_stable_scratch/
+webapp/_probe_scratch/
+webapp/_direct_fallback/
+logs/
+*.log
+webapp.pid
+
+# --- Archives / local bulk ---
+archive/reference-sources/
+archive/legacy-app/ocr_workspace/
+archive/previous-runs/
+*.tar.gz
+*.zip
+*.7z
+
+# --- Browser / local tools ---
+.playwright-cli/
+.playwright/
+
+# --- Optional local secrets ---
+.env
+.env.*
+!.env.example

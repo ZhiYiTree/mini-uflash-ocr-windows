@@ -1,0 +1,33 @@
+# Mini UFlash OCR — Windows-native dependencies
+# ---------------------------------------------------------------------------
+# Installed into the project venv at .venv\ (Python 3.13). Nothing here requires
+# WSL, a compiler toolchain, or Linux-only CUDA extensions.
+#
+# NOTE on Python version: the spec asked for Python 3.12 (fallback 3.11), but
+# the machine only has Python 3.13 and the full stack below supports 3.13.
+# We therefore reuse the existing 3.13 venv. See README.md for the rationale.
+#
+# torch is installed separately by install_windows.ps1 from the cu128 index
+# (RTX 5060 is Blackwell sm_120, needs the CUDA 12.8 build). It is NOT pinned
+# here so the installer can detect an already-working CUDA torch and avoid
+# replacing it with a CPU build.
+
+gradio>=5.0,<6.0
+# Keep schema generation deterministic across the Gradio 5 line.
+pydantic>=2.10,<2.11
+pymupdf>=1.24
+pillow>=10.0
+# torchvision is installed next to PyTorch by install_windows.ps1 from the
+# same CUDA index, so pip cannot replace the working CUDA torch with a mismatch.
+einops>=0.8,<0.9
+addict>=2.4,<3
+easydict>=1.13,<2
+matplotlib>=3.10,<3.11
+safetensors>=0.4
+huggingface_hub>=0.24
+numpy>=1.26
+psutil>=5.9
+pytest>=8.0
+# transformers must match the local Unlimited-OCR remote-code (written for
+# transformers 4.46.x). Pin to a 4.46 line to keep trust_remote_code working.
+transformers==4.46.3

@@ -1,0 +1,13 @@
+GitHub repository source:
+  mini-uflash-v2.0.0-alpha.1-source.tar.gz
+  mini-uflash-v2.0.0-alpha.1-source.tar.gz.sha256
+
+GitHub Release assets:
+  mini-uflash-v2.0.0-alpha.1-research-preview.tar.gz
+  mini-uflash-v2.0.0-alpha.1-research-preview.tar.gz.sha256
+  mini-uflash-v2.0.0-alpha.1-drafter-stage11b-best.pt
+  mini-uflash-v2.0.0-alpha.1-drafter-stage11b-best.pt.sha256
+
+Rollback backup:
+  mini-uflash-v2-checkpoints-pre-alpha1-20260716_111410.tar.gz
+  mini-uflash-v2-checkpoints-pre-alpha1-20260716_111410.tar.gz.sha256

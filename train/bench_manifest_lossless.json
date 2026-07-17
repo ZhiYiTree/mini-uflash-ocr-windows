@@ -1,0 +1,21 @@
+{
+  "format": "mini_uflash_gold_bench_v1",
+  "description": "tier=lossless（无 soft 截断；DSpark 校准 verify_len；对齐混元无损叙事）",
+  "pool_dir": "train/data/pages/pool",
+  "warmup": ["20260716_153718_2190_p00000_f919f4b9.png"],
+  "scored_pages": [
+    "20260716_153718_2190_p00123_dffc3e9a.png",
+    "20260716_153718_2190_p00246_82965cab.png",
+    "20260716_153718_2190_p00369_214637f4.png",
+    "mao175536_p00000_a02dddc5.png",
+    "mao175536_p00075_c5b0cd4c.png"
+  ],
+  "stable": {"preset": "gundam", "max_length": 2048},
+  "stable_dflash": {"tier": "lossless"},
+  "success_criteria": {
+    "mean_wall_speedup_min": 1.15,
+    "worst_wall_speedup_min": 0.95,
+    "mean_length_ratio_max": 1.25,
+    "note": "不得依赖 soft 截断赢墙钟"
+  }
+}

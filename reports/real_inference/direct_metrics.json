@@ -1,0 +1,32 @@
+{
+  "mode": "mini_uflash_direct",
+  "non_lossless": true,
+  "commit_policy": "direct_full_block_else_strict_fallback",
+  "generated_tokens": 126,
+  "total_seconds": 8.32,
+  "preprocessing_seconds": 0.03,
+  "speculative_rounds": 63,
+  "direct_block_commits": 63,
+  "full_block_commits": 0,
+  "fallback_rounds": 0,
+  "direct_committed_tokens": 125,
+  "target_decode_forwards": 63,
+  "mean_accepted_draft": 0.9841,
+  "full_block_ratio": 0.0,
+  "acceptance_histogram": {
+    "0": 32,
+    "1": 6,
+    "2": 21,
+    "3": 2,
+    "4": 2
+  },
+  "drafter_latency_ms": 8.77,
+  "block_verifier_latency_ms": 109.95,
+  "strict_fallback_latency_ms": 0.0,
+  "target_forward_reduction": 2.0,
+  "checkpoint_path": "D:\\Python\\OCR\\weights\\mini-uflash-v2.0.0-alpha.1-drafter-stage11b-best.pt",
+  "checkpoint_step": 49100,
+  "block_size": 8,
+  "stopped_on_eos": true,
+  "warning": "Direct Block KV-cache commit 是非无损实验路径；结果可能与普通 Unlimited-OCR 不同。"
+}

@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Unlimited-OCR · 文档解析</title>
+<style>
+  :root {
+    --green: #00A86B;
+    --green-light: #E8F5E9;
+    --bg: #F5F5F7;
+    --card: #FFFFFF;
+    --text: #1D1D1F;
+    --text-secondary: #86868B;
+    --border: #E5E5EA;
+    --radius: 16px;
+    --shadow: 0 2px 12px rgba(0,0,0,.08);
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+  }
+
+  /* Header */
+  .header {
+    background: var(--green);
+    color: white;
+    padding: 20px 40px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    box-shadow: 0 2px 8px rgba(0,168,107,.3);
+  }
+  .header .logo {
+    font-size: 28px; font-weight: 700; letter-spacing: -0.5px;
+  }
+  .header .sub {
+    opacity: .85; font-size: 14px;
+  }
+
+  /* Main layout */
+  .container {
+    max-width: 900px; margin: 0 auto; padding: 32px 20px;
+  }
+
+  /* Card */
+  .card {
+    background: var(--card);
+    border-radius: var(--radius);
+    padding: 28px;
+    margin-bottom: 20px;
+    box-shadow: var(--shadow);
+    border: 1px solid var(--border);
+  }
+  .card h2 {
+    font-size: 18px; font-weight: 600; margin-bottom: 16px;
+    display: flex; align-items: center; gap: 8px;
+  }
+
+  /* Upload zone */
+  .upload-zone {
+    border: 2px dashed var(--border);
+    border-radius: var(--radius);
+    padding: 48px 24px;
+    text-align: center;
+    transition: all .2s;
+    cursor: pointer;
+    background: #FAFAFA;
+  }
+  .upload-zone:hover, .upload-zone.drag-over {
+    border-color: var(--green);
+    background: var(--green-light);
+  }
+  .upload-zone .icon { font-size: 40px; margin-bottom: 12px; }
+  .upload-zone .hint { color: var(--text-secondary); font-size: 14px; margin-top: 8px; }
+  .upload-zone input { display: none; }
+
+  .file-info {
+    display: none;
+    background: var(--green-light);
+    border-radius: 10px;
+    padding: 12px 16px;
+    margin-top: 12px;
+    align-items: center;
+    gap: 10px;
+  }
+  .file-info.show { display: flex; }
+  .file-info .name { font-weight: 600; flex: 1; }
+  .file-info .pages { color: var(--text-secondary); font-size: 14px; }
+
+  /* Form */
+  .form-row {
+    display: flex; gap: 16px; flex-wrap: wrap;
+  }
+  .form-group {
+    flex: 1; min-width: 140px;
+  }
+  .form-group label {
+    display: block; font-size: 13px; font-weight: 600; color: var(--text-secondary);
+    margin-bottom: 6px; text-transform: uppercase; letter-spacing: .5px;
+  }
+  .form-group input, .form-group select {
+    width: 100%; padding: 10px 14px; border: 1px solid var(--border); border-radius: 10px;
+    font-size: 15px; font-family: inherit;
+    transition: border-color .2s;
+  }
+  .form-group input:focus {
+    outline: none; border-color: var(--green); box-shadow: 0 0 0 3px rgba(0,168,107,.15);
+  }
+
+  /* Button */
+  .btn {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 12px 28px; border: none; border-radius: 12px;
+    font-size: 16px; font-weight: 600; cursor: pointer;
+    transition: all .2s; font-family: inherit;
+  }
+  .btn-primary {
+    background: var(--green); color: white;
+  }
+  .btn-primary:hover { filter: brightness(1.1); }
+  .btn-primary:disabled {
+    opacity: .5; cursor: not-allowed; filter: none;
+  }
+  .btn-download {
+    background: #007AFF; color: white; text-decoration: none;
+  }
+  .btn-download:hover { filter: brightness(1.1); }
+
+  /* Progress */
+  .progress-section { display: none; }
+  .progress-section.show { display: block; }
+  .progress-bar-outer {
+    background: var(--border); border-radius: 10px; height: 8px; overflow: hidden;
+    margin: 12px 0;
+  }
+  .progress-bar-inner {
+    background: var(--green); height: 100%; border-radius: 10px;
+    transition: width .3s; width: 0%;
+  }
+  .progress-text {
+    display: flex; justify-content: space-between; font-size: 14px; margin-top: 6px;
+  }
+  .progress-text .status { color: var(--text-secondary); }
+  .progress-status {
+    padding: 6px 14px; border-radius: 20px; font-size: 13px; font-weight: 600; display: inline-block;
+  }
+  .status-running { background: #FFF3E0; color: #E65100; }
+  .status-done { background: #E8F5E9; color: #2E7D32; }
+  .status-error { background: #FFEBEE; color: #C62828; }
+
+  /* Result */
+  .result-section { display: none; }
+  .result-section.show { display: block; }
+  .preview-box {
+    background: #FAFAFA; border: 1px solid var(--border); border-radius: 10px;
+    padding: 20px; max-height: 400px; overflow-y: auto; font-size: 14px;
+    line-height: 1.8; white-space: pre-wrap;
+  }
+  .result-actions { margin-top: 16px; display: flex; gap: 12px; }
+
+  /* Toast */
+  .toast {
+    position: fixed; top: 20px; right: 20px;
+    background: #C62828; color: white; padding: 12px 20px;
+    border-radius: 10px; font-size: 14px; display: none;
+    z-index: 999; box-shadow: 0 4px 12px rgba(0,0,0,.2);
+  }
+  .toast.show { display: block; }
+
+  @media (max-width: 600px) {
+    .header { padding: 16px 20px; }
+    .container { padding: 20px 12px; }
+    .card { padding: 20px; }
+    .form-row { flex-direction: column; }
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <span class="logo">&#x1F4D6; Unlimited-OCR</span>
+  <span class="sub">百度 · 端到端文档解析</span>
+</div>
+
+<div class="container">
+
+  <!-- Step 1: Upload -->
+  <div class="card">
+    <h2>&#x1F4C1; 第一步：上传 PDF</h2>
+    <div class="upload-zone" id="uploadZone">
+      <div class="icon">&#x1F4E4;</div>
+      <div><b>点击选择</b> 或拖拽 PDF 到此处</div>
+      <div class="hint">支持 PDF 格式，单文件最大 200MB</div>
+      <input type="file" id="fileInput" accept=".pdf">
+    </div>
+    <div class="file-info" id="fileInfo">
+      <span class="name" id="fileName">-</span>
+      <span class="pages" id="filePages">-</span>
+      <button class="btn btn-primary" onclick="document.getElementById('fileInput').click()" style="padding:6px 14px;font-size:13px;">更换</button>
+    </div>
+  </div>
+
+  <!-- Step 2: Settings -->
+  <div class="card" id="settingsCard" style="display:none">
+    <h2>&#x2699;&#xFE0F; 第二步：参数设置</h2>
+    <div class="form-row">
+      <div class="form-group">
+        <label>起始页</label>
+        <input type="number" id="startPage" value="1" min="1">
+      </div>
+      <div class="form-group">
+        <label>结束页</label>
+        <input type="number" id="endPage" value="1" min="1">
+      </div>
+      <div class="form-group">
+        <label>DPI</label>
+        <select id="dpi">
+          <option value="150">150 (快)</option>
+          <option value="200" selected>200 (推荐)</option>
+          <option value="300">300 (精细)</option>
+        </select>
+      </div>
+    </div>
+    <div style="margin-top:20px">
+      <button class="btn btn-primary" id="startBtn" onclick="startOCR()">
+        &#x25B6;&#xFE0F; 开始 OCR
+      </button>
+    </div>
+  </div>
+
+  <!-- Step 3: Progress -->
+  <div class="card progress-section" id="progressSection">
+    <h2>&#x1F4CA; OCR 进度</h2>
+    <span class="progress-status status-running" id="progressStatus">处理中</span>
+    <div class="progress-bar-outer">
+      <div class="progress-bar-inner" id="progressBar"></div>
+    </div>
+    <div class="progress-text">
+      <span id="progressMessage">准备中...</span>
+      <span class="status" id="progressCount">0 / 0</span>
+    </div>
+  </div>
+
+  <!-- Step 4: Result -->
+  <div class="card result-section" id="resultSection">
+    <h2>&#x2705; OCR 结果</h2>
+    <div class="preview-box" id="previewBox"></div>
+    <div class="result-actions">
+      <a class="btn btn-download" id="downloadBtn" href="#" download>&#x2B07;&#xFE0F; 下载 Markdown</a>
+      <button class="btn" style="background:var(--border)" onclick="resetAll()">&#x1F504; 重新开始</button>
+    </div>
+  </div>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const API = '';
+let taskId = '';
+let pollTimer = null;
+
+// Upload
+const uploadZone = document.getElementById('uploadZone');
+const fileInput = document.getElementById('fileInput');
+const fileInfo = document.getElementById('fileInfo');
+
+uploadZone.addEventListener('click', () => fileInput.click());
+
+uploadZone.addEventListener('dragover', e => { e.preventDefault(); uploadZone.classList.add('drag-over'); });
+uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('drag-over'));
+uploadZone.addEventListener('drop', e => {
+  e.preventDefault();
+  uploadZone.classList.remove('drag-over');
+  if (e.dataTransfer.files.length) uploadFile(e.dataTransfer.files[0]);
+});
+
+fileInput.addEventListener('change', () => {
+  if (fileInput.files.length) uploadFile(fileInput.files[0]);
+});
+
+async function uploadFile(file) {
+  const form = new FormData();
+  form.append('pdf', file);
+  try {
+    const res = await fetch(API + '/api/upload', { method:'POST', body:form });
+    const data = await res.json();
+    if (data.error) { toast(data.error); return; }
+
+    taskId = data.task_id;
+    document.getElementById('fileName').textContent = data.filename;
+    document.getElementById('filePages').textContent = data.pages + ' 页';
+    fileInfo.classList.add('show');
+    uploadZone.style.display = 'none';
+
+    document.getElementById('startPage').max = data.pages;
+    document.getElementById('endPage').max = data.pages;
+    document.getElementById('endPage').value = data.pages;
+    document.getElementById('settingsCard').style.display = 'block';
+  } catch(e) { toast('上传失败'); }
+}
+
+// Start OCR
+async function startOCR() {
+  const startPage = parseInt(document.getElementById('startPage').value) - 1;
+  const endPage = parseInt(document.getElementById('endPage').value) - 1;
+  const dpi = parseInt(document.getElementById('dpi').value);
+
+  if (startPage > endPage) { toast('起始页不能大于结束页'); return; }
+
+  document.getElementById('startBtn').disabled = true;
+  document.getElementById('progressSection').classList.add('show');
+  document.getElementById('resultSection').classList.remove('show');
+
+  try {
+    const res = await fetch(API + '/api/start', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ task_id:taskId, start_page:startPage, end_page:endPage, dpi:dpi })
+    });
+    const data = await res.json();
+    if (!data.ok) { toast('启动失败'); return; }
+  } catch(e) { toast('启动失败'); return; }
+
+  pollTimer = setInterval(pollProgress, 1500);
+  pollProgress();
+}
+
+async function pollProgress() {
+  try {
+    const res = await fetch(API + '/api/progress/' + taskId);
+    const data = await res.json();
+
+    const percent = data.total > 0 ? Math.round(data.done / data.total * 100) : 0;
+    document.getElementById('progressBar').style.width = percent + '%';
+    document.getElementById('progressMessage').textContent = data.message || '';
+    document.getElementById('progressCount').textContent = data.done + ' / ' + data.total;
+
+    const statusEl = document.getElementById('progressStatus');
+    if (data.status === 'done') {
+      clearInterval(pollTimer);
+      statusEl.textContent = '完成';
+      statusEl.className = 'progress-status status-done';
+      showResult();
+    } else if (data.status === 'error') {
+      clearInterval(pollTimer);
+      statusEl.textContent = '错误';
+      statusEl.className = 'progress-status status-error';
+      toast(data.message);
+    } else {
+      statusEl.textContent = '处理中';
+      statusEl.className = 'progress-status status-running';
+    }
+  } catch(e) {}
+}
+
+async function showResult() {
+  const section = document.getElementById('resultSection');
+  section.classList.add('show');
+
+  document.getElementById('downloadBtn').href = API + '/api/result/' + taskId;
+
+  try {
+    const res = await fetch(API + '/api/preview/' + taskId);
+    const data = await res.json();
+    document.getElementById('previewBox').textContent = data.content
+      ? data.content.substring(0, 5000) + '\n\n...（完整内容请下载查看）'
+      : '(无内容)';
+  } catch(e) {}
+}
+
+function resetAll() {
+  clearInterval(pollTimer);
+  taskId = '';
+  document.getElementById('fileInput').value = '';
+  fileInfo.classList.remove('show');
+  uploadZone.style.display = '';
+  document.getElementById('settingsCard').style.display = 'none';
+  document.getElementById('progressSection').classList.remove('show');
+  document.getElementById('resultSection').classList.remove('show');
+  document.getElementById('startBtn').disabled = false;
+  document.getElementById('progressBar').style.width = '0%';
+}
+
+function toast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), 3000);
+}
+</script>
+</body>
+</html>

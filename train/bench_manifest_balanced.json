@@ -1,0 +1,15 @@
+{
+  "format": "mini_uflash_gold_bench_v1",
+  "description": "tier=balanced（中等 soft 帽）",
+  "pool_dir": "train/data/pages/pool",
+  "warmup": ["20260716_153718_2190_p00000_f919f4b9.png"],
+  "scored_pages": [
+    "20260716_153718_2190_p00123_dffc3e9a.png",
+    "20260716_153718_2190_p00246_82965cab.png",
+    "20260716_153718_2190_p00369_214637f4.png",
+    "mao175536_p00000_a02dddc5.png",
+    "mao175536_p00075_c5b0cd4c.png"
+  ],
+  "stable": {"preset": "gundam", "max_length": 2048},
+  "stable_dflash": {"tier": "balanced"}
+}

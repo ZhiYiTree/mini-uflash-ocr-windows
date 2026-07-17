@@ -1,0 +1,77 @@
+{
+  "format": "mini_uflash_gold_bench_v1",
+  "description": "冻结金标准：同一页集 + 同一调度，只允许换一个变量（权重或调度开关）",
+  "created": "2026-07-17",
+  "pool_dir": "train/data/pages/pool",
+  "warmup": [
+    "20260716_153718_2190_p00000_f919f4b9.png"
+  ],
+  "scored_pages": [
+    "20260716_153718_2190_p00123_dffc3e9a.png",
+    "20260716_153718_2190_p00246_82965cab.png",
+    "20260716_153718_2190_p00369_214637f4.png",
+    "mao175536_p00000_a02dddc5.png",
+    "mao175536_p00075_c5b0cd4c.png"
+  ],
+  "stable": {
+    "preset": "gundam",
+    "max_length": 2048
+  },
+  "stable_dflash": {
+    "preset": "gundam",
+    "max_length": 2048,
+    "block_size": 4,
+    "max_block_size": 8,
+    "length_hard_cap": 512,
+    "resync_every": 192,
+    "low_tau_b1_threshold": 1.0,
+    "low_tau_window": 8,
+    "low_tau_b1_steps": 6,
+    "zero_accept_page_b1_after": 12
+  },
+  "report_columns": [
+    "wall_speedup_stable_over_direct",
+    "mean_accepted_draft",
+    "length_ratio_direct_over_stable",
+    "cost_share_draft_verify_resync"
+  ],
+  "baselines": {
+    "stage1_r4_scheduler_20260717_115544": {
+      "mean_wall_speedup": 1.115,
+      "median_wall_speedup": 1.063,
+      "mean_accepted_draft": 1.313,
+      "note": "R4 weight + stage1 scheduler"
+    },
+    "stage2_r5_20260717_122633": {
+      "mean_wall_speedup": 1.069,
+      "median_wall_speedup": 1.051,
+      "mean_accepted_draft": 1.347,
+      "note": "R5 weight + stage1 scheduler"
+    },
+    "gold_system_20260717_123649": {
+      "mean_wall_speedup": 1.228,
+      "median_wall_speedup": 0.986,
+      "worst_wall_speedup": 0.937,
+      "mean_accepted_draft": 1.347,
+      "mean_length_ratio": 1.678,
+      "mean_cost_share_verify": 0.094,
+      "note": "R5 weight + gold manifest + page-degrade/cost split; production baseline for next A/B",
+      "run_dir": "train/runs/bench_stable_vs_direct_20260717_123649"
+    }
+  },
+  "success_criteria_next": {
+    "system_only": {
+      "mean_wall_speedup_min": 1.1,
+      "worst_page_speedup_min": 0.95
+    },
+    "same_track_train_pilot": {
+      "live_mean_accepted_draft_min": 2.0,
+      "mean_wall_speedup_min": 1.15
+    }
+  },
+  "rules": [
+    "同一 manifest 下每次只改一个变量（权重 XOR 调度参数）",
+    "验收以 live 墙钟比 + live mean_acc + 长度比 + 成本拆分为准",
+    "offline B8 仅作 debug，不得单独作为发布依据"
+  ]
+}

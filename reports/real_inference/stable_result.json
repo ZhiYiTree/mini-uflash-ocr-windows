@@ -1,0 +1,18 @@
+{
+  "mode": "stable",
+  "pages": [
+    {
+      "page_index": 0,
+      "raw_markdown": "Mini UFlash OCR 真实测试\nWindows 原生推理 · Unlimited-OCR\nInvoice No: MUF-2026-0716\n金额 Amount: ¥ 1,280.50\n准确、可验证、无静态演示数据。",
+      "markdown": "Mini UFlash OCR 真实测试\nWindows 原生推理 · Unlimited-OCR\nInvoice No: MUF-2026-0716\n金额 Amount: ¥ 1,280.50\n准确、可验证、无静态演示数据。",
+      "elapsed_seconds": 9.71782240000175,
+      "generated_tokens": 50,
+      "error": null
+    }
+  ],
+  "markdown": "Mini UFlash OCR 真实测试\nWindows 原生推理 · Unlimited-OCR\nInvoice No: MUF-2026-0716\n金额 Amount: ¥ 1,280.50\n准确、可验证、无静态演示数据。",
+  "plain_text": "Mini UFlash OCR 真实测试\nWindows 原生推理 · Unlimited-OCR\nInvoice No: MUF-2026-0716\n金额 Amount: ¥ 1,280.50\n准确、可验证、无静态演示数据。",
+  "raw_output": "Mini UFlash OCR 真实测试\nWindows 原生推理 · Unlimited-OCR\nInvoice No: MUF-2026-0716\n金额 Amount: ¥ 1,280.50\n准确、可验证、无静态演示数据。",
+  "elapsed_seconds": 9.71782240000175,
+  "generated_tokens": 50
+}
