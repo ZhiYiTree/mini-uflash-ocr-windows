@@ -22,8 +22,13 @@ Upstream research baseline (optional):
 
 ## How to obtain
 
-1. **GitHub Release** (if published): download the production `.pt` and put it in this folder.
-2. **Train yourself**: see `train/README.md` (Windows 8GB continue pipeline).
-3. **Env override**: set `MINI_UFLASH_WEIGHT` to the absolute path of any checkpoint.
+1. **推荐**：项目根目录运行 `.\download_models.ps1` 或 `.\setup_full.ps1`  
+   - 自动从 GitHub Release `v1.0.0` 拉取  
+     `mini-uflash-win-domain-continue-best.pt`  
+   - SHA256：`5D9DAA2749B5C9C770724ECBA7BEB2627FC398CB47BE67337FDBD5B5FFC4B079`
+2. **手动**：打开仓库 Releases 页下载同名文件到本目录。
+3. **Train yourself**：见 `train/README.md`（Windows 8GB continue）。
+4. **Env override**：`MINI_UFLASH_WEIGHT` = 任意 `.pt` 绝对路径。
 
-Unlimited-OCR (≈6GB+) goes under `models/PaddlePaddle/Unlimited-OCR` and is also not in Git — use `download_models.ps1 -AllowLargeDownload` or set `UNLIMITED_OCR_PATH`.
+Unlimited-OCR（≈6GB+）不在 Git 中，由 `download_models.ps1` 从 Hugging Face `baidu/Unlimited-OCR` 装到  
+`models/PaddlePaddle/Unlimited-OCR`。

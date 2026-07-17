@@ -1,39 +1,83 @@
-# Mini UFlash OCR（Windows 原生）
+# Mini UFlash OCR（Windows 原生 · 完整可用）
 
-本项目是 Windows 11 + NVIDIA GPU 的本地 OCR 网页工作台。普通模式调用本地 Unlimited-OCR 官方 `model.infer()`；加速版加载域适配 Stage 11B drafter，走 **稳定 DFlash**：目标模型验证草稿前缀 → 可裁剪提交 → **周期 prefill 重同步** + 退化熔断 + 低接受率时回退 B1。支持图片和逐页 PDF。
+本机 OCR 网页工作台：**官方 Unlimited-OCR 稳定识别** + 可选 **Stable DFlash 加速**（快速 / 均衡 / 无损三档）。
 
-不使用 WSL、Docker、Bash、Flash Attention、Triton 或 xformers。模型 attention 按 SDPA → eager 尝试。旧版无界 Direct 仍保留在代码中供研究对比；网页加速入口已切换为稳定 DFlash。墙钟加速取决于页面接受率，长文优先正确收敛而非硬冲吞吐。
+不依赖 WSL、Docker、Flash Attention。适合 Windows 11 + NVIDIA GPU（约 8GB 显存可跑）。
 
-## 快速开始
+> **仓库不含 6GB+ 模型文件**（GitHub 单文件限制）。克隆后运行安装脚本会**自动下载** Unlimited-OCR（Hugging Face）与生产加速权重（GitHub Release），装完即可用网页。
 
-普通使用：双击根目录的 `启动前端.bat`，浏览器会自动打开。
-
-也可以使用 PowerShell：
+## 给新用户：三步直接用
 
 ```powershell
+# 1. 克隆
+git clone https://github.com/ZhiYiTree/mini-uflash-ocr-windows.git
+cd mini-uflash-ocr-windows
+
+# 2. 完整安装（环境 + Unlimited-OCR ≈6GB + 加速权重 ≈32MB）
 Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
-.\install_windows.ps1
+.\setup_full.ps1
+
+# 3. 启动网页
 .\launch_webapp.ps1
+# 或双击「启动前端.bat」（缺环境/模型时会自动补齐）
 ```
 
-Python 前端入口：`.\.venv\Scripts\python.exe frontend.py`。各文件用途见 `文件说明.md`。
+浏览器打开 <http://127.0.0.1:7860>，上传图片或 PDF 即可。
 
-后台启动：`.\launch_webapp.ps1 -Background -NoBrowser`。停止：`.\stop_webapp.ps1`。地址固定为 <http://127.0.0.1:7860>，不创建公网分享链接。
+| 处理方式 | 说明 |
+| --- | --- |
+| **普通版 · 稳定** | 官方 Unlimited-OCR，质量基准 |
+| **加速版 · 稳定 DFlash** | 验证前缀投机解码；档位见下 |
+
+加速档位（加速版可见）：
+
+| 档位 | 含义 |
+| --- | --- |
+| **快速**（默认） | 墙钟优先，可 soft 截断；金标准约 1.7× |
+| **均衡** | 更完整一点；约 1.5× |
+| **无损** | 无 soft 截断；当前 live 接受率下未必更快 |
 
 ## 本机路径
 
-- Unlimited-OCR：`models\PaddlePaddle\Unlimited-OCR`，也可设置进程环境变量 `UNLIMITED_OCR_PATH` 或在网页填写。
-- Stage 11B：`weights\mini-uflash-v2.0.0-alpha.1-drafter-stage11b-best.pt`，也可设置 `MINI_UFLASH_WEIGHT`。
-- 输出：`webapp\outputs\YYYYMMDD_HHMMSS_random\`。
+| 内容 | 路径 | 如何获得 |
+| --- | --- | --- |
+| Unlimited-OCR | `models\PaddlePaddle\Unlimited-OCR` | `download_models.ps1` / HF `baidu/Unlimited-OCR` |
+| 生产 drafter | `weights\mini-uflash-win-domain-continue-best.pt` | GitHub Release `v1.0.0` |
+| 识别输出 | `webapp\outputs\...` | 运行时生成 |
 
-应用不会自动下载 6GB+ 模型。`download_models.ps1` 默认只检查路径；只有显式传入 `-AllowLargeDownload` 才会下载 Unlimited-OCR。
+环境变量（可选）：
 
-## 兼容性说明
+- `UNLIMITED_OCR_PATH` — 模型目录
+- `MINI_UFLASH_WEIGHT` — drafter 权重文件
+- `UNLIMITED_OCR_HF_REPO` — 覆盖 HF 仓库 id
+- `MINI_UFLASH_SKIP_MODELS=1` — `install_windows.ps1` 跳过自动下模型
 
-本机只有 Python 3.13，因此当前 `.venv` 使用 Python 3.13；CUDA PyTorch 2.11.0 + cu128 已验证可用。`transformers==4.46.3` 依据本地模型 `config.json` 的 `transformers_version` 锁定。`torchvision` 由安装脚本从与 PyTorch 相同的 CUDA 12.8 wheel 源安装，防止 CPU 包覆盖 CUDA PyTorch。
-Gradio 使用支持 Python 3.13 与新版 FastAPI/Starlette 的 5.x，并锁定 Pydantic 2.10.x。
+## 分步安装（可选）
 
-加速实验版会对 PDF 逐页运行，模型和 Drafter 只加载一次；每页完成后立即保存，单页发生异常时自动回退普通 Unlimited-OCR。Direct Block 是非无损实验路径，可能出现漏字、错字或缓存漂移，请抽查重要内容。页面显示的 token/forward 是目标模型调用折算，不等同于端到端加速；实际收益取决于页面和草稿接受率。
+```powershell
+.\install_windows.ps1          # Python venv + CUDA torch + 依赖（默认也会尝试下模型）
+.\download_models.ps1          # 仅下载 / 补齐模型与权重
+.\download_models.ps1 -CheckOnly
+.\check_environment.ps1
+```
+
+后台启动：`.\launch_webapp.ps1 -Background -NoBrowser`。停止：`.\stop_webapp.ps1`。
+
+## 为什么不把 Unlimited-OCR 放进 Git？
+
+| 资源 | 大约体积 | 处理方式 |
+| --- | ---: | --- |
+| Unlimited-OCR `model-*.safetensors` | **~6.3 GB** | Hugging Face 自动下载（Git / Release 单文件上限远小于此） |
+| 生产 drafter `.pt` | **~32 MB** | **GitHub Release** 资产 + 安装脚本拉取 |
+| 训练页图 / teacher | 可达数十 GB | 不发布；见 `train/` 自建 |
+
+对使用者等价于「完整版」：克隆 → `setup_full.ps1` → 启动前端，无需手找模型。
+
+## 兼容性
+
+- Python 3.12/3.13；本机验证过 3.13 + CUDA 12.8 PyTorch。
+- `transformers==4.46.3`（匹配 Unlimited-OCR remote code）。
+- Attention：SDPA → eager。
 
 ## 验证
 
@@ -41,39 +85,17 @@ Gradio 使用支持 Python 3.13 与新版 FastAPI/Starlette 的 5.x，并锁定 
 .\.venv\Scripts\python.exe -m compileall webapp
 .\.venv\Scripts\python.exe -m pytest webapp\tests -v
 .\check_environment.ps1
+.\download_models.ps1 -CheckOnly
 .\launch_webapp.ps1 -Background -NoBrowser
 Invoke-WebRequest http://127.0.0.1:7860 -UseBasicParsing
 .\stop_webapp.ps1
 ```
 
-## 本机续训（Windows 8GB，可选）
+## 本机续训（可选）
 
-域适配 / Stage 11B 续训脚手架在 `train/`。默认**不启动**任何 GPU 训练；说明见 `train/README.md` 与 `train/STATUS.md`。准备环境：`.\train\run_prepare.ps1`。
+`train/` 为 Windows 8GB 域适配脚手架。说明见 `train/README.md`、`train/STATUS.md`、`train/GOLD_BASELINE.md`。
 
-## GitHub 发布（本仓库约定）
+## 许可证与上游
 
-**会提交**
-
-- `webapp/` 源码与测试、`train/` 训练脚手架与 manifest/文档
-- PowerShell 安装/启动脚本、`requirements-windows.txt`、`README.md` / `文件说明.md`
-- `weights/README.md`、`train/conf_calibration.json`（小配置，无权重）
-- `reports/` 中不含隐私的环境/测速说明（若有）
-
-**不会提交（见 `.gitignore`）**
-
-| 内容 | 原因 |
-| --- | --- |
-| `models/` | Unlimited-OCR ≈6GB+ |
-| `weights/*.pt` | drafter 权重，请用 Release 或本地训练 |
-| `train/data/`、`train/runs/` | 页图/teacher/checkpoint 可达数十 GB |
-| `webapp/outputs/`、`logs/`、`.venv/` | 运行产物与环境 |
-
-克隆后：
-
-```powershell
-.\install_windows.ps1
-# 准备 models\ 与 weights\（见 weights\README.md）
-.\launch_webapp.ps1
-```
-
-发布 drafter 权重时：单独上传 **GitHub Release** 资产，并附 SHA-256；不要把 `.pt` 打进主仓库。
+- Unlimited-OCR：遵循其 Hugging Face / 官方许可证。
+- 本仓库应用与训练脚手架：见仓库声明；提交 issue 前请说明 GPU / 驱动 / 是否完成 `setup_full.ps1`。

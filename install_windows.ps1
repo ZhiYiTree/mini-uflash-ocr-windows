@@ -129,6 +129,20 @@ if ($LASTEXITCODE -ne 0) {
     Write-Host "        OK" -ForegroundColor Green
 }
 
+# ---- Optional: pull models so the web UI can run immediately ---------------
+# Skip with:  $env:MINI_UFLASH_SKIP_MODELS = "1"
+if ($env:MINI_UFLASH_SKIP_MODELS -ne "1") {
+    Write-Host ""
+    Write-Host "[models] Ensuring Unlimited-OCR + production weight ..." -ForegroundColor Yellow
+    $dl = Join-Path $ProjectRoot "download_models.ps1"
+    if (Test-Path -LiteralPath $dl) {
+        & $dl
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host "        模型下载未完成。可稍后运行: .\download_models.ps1" -ForegroundColor Yellow
+        }
+    }
+}
+
 # ---- Summary -------------------------------------------------------------
 Write-Host ""
 Write-Host "=====================================" -ForegroundColor Cyan
@@ -136,6 +150,8 @@ Write-Host " Installation complete!" -ForegroundColor Green
 Write-Host "=====================================" -ForegroundColor Cyan
 Write-Host ""
 Write-Host "Next steps:" -ForegroundColor White
-Write-Host "  .\launch_webapp.ps1" -ForegroundColor Yellow
+Write-Host "  双击 启动前端.bat   或   .\launch_webapp.ps1" -ForegroundColor Yellow
+Write-Host "  一键含模型: .\setup_full.ps1" -ForegroundColor Yellow
+Write-Host "  地址: http://127.0.0.1:7860" -ForegroundColor Cyan
 Write-Host ""
 exit 0
