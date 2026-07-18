@@ -95,6 +95,14 @@ Invoke-WebRequest http://127.0.0.1:7860 -UseBasicParsing
 
 `train/` 为 Windows 8GB 域适配脚手架。说明见 `train/README.md`、`train/STATUS.md`、`train/GOLD_BASELINE.md`。
 
+## 诚实现状（欢迎讨论）
+
+我们把「做成了什么 / 还缺什么」写在独立文档里，避免只报 1.8×、不说截断与无损失败：
+
+→ **[docs/HONEST_STATUS.md](docs/HONEST_STATUS.md)**
+
+一句话：**可截断策略下有墙钟收益；关掉 soft 后当前权重尚不能稳定加速。训练下一跳仍未验证。**
+
 ## 许可证与上游
 
 - Unlimited-OCR：遵循其 Hugging Face / 官方许可证。
