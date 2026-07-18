@@ -97,7 +97,11 @@ Invoke-WebRequest http://127.0.0.1:7860 -UseBasicParsing
 
 ## 诚实现状（欢迎讨论）
 
-我们把「做成了什么 / 还缺什么」写在独立文档里，避免只报 1.8×、不说截断与无损失败：
+开源说明与协作号召（润色稿）：
+
+→ **[GitHub Discussion #1](https://github.com/ZhiYiTree/mini-uflash-ocr-windows/discussions/1)** · **[docs/ANNOUNCEMENT.md](docs/ANNOUNCEMENT.md)**
+
+更细的自我评估：
 
 → **[docs/HONEST_STATUS.md](docs/HONEST_STATUS.md)**
 
