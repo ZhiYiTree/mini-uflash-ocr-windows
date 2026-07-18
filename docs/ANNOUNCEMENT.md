@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/logo-256.png" alt="Mini UFlash Logo" width="140" />
+  <img src="assets/hero-banner.png" alt="Mini UFlash hero" width="900" />
 </p>
 
 # Mini UFlash：为 Unlimited-OCR 探索 Windows 本地投机解码

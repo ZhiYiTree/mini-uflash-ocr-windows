@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/assets/logo-256.png" alt="Mini UFlash Logo" width="168" />
+  <img src="docs/assets/hero-banner.png" alt="Mini UFlash — Windows 本地投机解码" width="960" />
 </p>
 
 # Mini UFlash
@@ -21,6 +21,17 @@
 
 > **Research Preview。** 链路可运行、可测量、失败可复现；**尚未**达到「完整输出下稳定高倍加速」。  
 > 完整开源说明：[Discussion #1](https://github.com/ZhiYiTree/mini-uflash-ocr-windows/discussions/1) · [docs/ANNOUNCEMENT.md](docs/ANNOUNCEMENT.md) · [docs/HONEST_STATUS.md](docs/HONEST_STATUS.md)
+
+<details>
+<summary><b>品牌资源</b>（logo / 纯海报 / 备选构图）</summary>
+<p align="center">
+  <img src="docs/assets/logo-256.png" alt="Logo" width="120" />
+  &nbsp;&nbsp;
+  <img src="docs/assets/hero-poster.jpg" alt="Hero poster without title" width="360" />
+  &nbsp;&nbsp;
+  <img src="docs/assets/hero-poster-alt.jpg" alt="Hero poster alternate" width="360" />
+</p>
+</details>
 
 <p align="center">
   <img src="docs/assets/ui-desktop.png" alt="Mini UFlash 本地网页界面" width="920" />
