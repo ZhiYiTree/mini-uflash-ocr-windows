@@ -667,13 +667,20 @@ def main() -> None:
     ui = build_ui(callbacks)
 
     _log.info("Launching Gradio on %s:%d ...", config.HOST, config.PORT)
-    ui.launch(
-        server_name=config.HOST,
-        server_port=config.PORT,
-        share=False,
-        prevent_thread_lock=False,
-        show_error=True,
-    )
+    favicon = config.ASSETS_DIR / "logo-64.png"
+    if not favicon.is_file():
+        favicon = config.ASSETS_DIR / "logo.png"
+    launch_kwargs = {
+        "server_name": config.HOST,
+        "server_port": config.PORT,
+        "share": False,
+        "prevent_thread_lock": False,
+        "show_error": True,
+        "allowed_paths": [str(config.ASSETS_DIR)],
+    }
+    if favicon.is_file():
+        launch_kwargs["favicon_path"] = str(favicon)
+    ui.launch(**launch_kwargs)
 
 
 if __name__ == "__main__":

@@ -1,12 +1,23 @@
+<p align="center">
+  <img src="docs/assets/logo-256.png" alt="Mini UFlash Logo" width="168" />
+</p>
+
 # Mini UFlash
 
-**为 Unlimited-OCR 探索 Windows 本地投机解码**
+<p align="center">
+  <strong>为 Unlimited-OCR 探索 Windows 本地投机解码</strong><br/>
+  <sub>可爱侦探蓝鲸 · 在本地帮你「看清」文档</sub>
+</p>
 
 面向 **8GB 级 Windows 设备**、受 **DFlash / 混元 OCR** 思路启发的 **Unlimited-OCR 投机解码参考实现**。
+
+<p align="center">
 
 [![Research Preview](https://img.shields.io/badge/status-Research%20Preview-orange)](docs/ANNOUNCEMENT.md)
 [![Discussions](https://img.shields.io/badge/GitHub-Discussion%20%231-blue)](https://github.com/ZhiYiTree/mini-uflash-ocr-windows/discussions/1)
 [![Release](https://img.shields.io/badge/weight-v1.0.0-green)](https://github.com/ZhiYiTree/mini-uflash-ocr-windows/releases/tag/v1.0.0)
+
+</p>
 
 > **Research Preview。** 链路可运行、可测量、失败可复现；**尚未**达到「完整输出下稳定高倍加速」。  
 > 完整开源说明：[Discussion #1](https://github.com/ZhiYiTree/mini-uflash-ocr-windows/discussions/1) · [docs/ANNOUNCEMENT.md](docs/ANNOUNCEMENT.md) · [docs/HONEST_STATUS.md](docs/HONEST_STATUS.md)

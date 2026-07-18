@@ -2,12 +2,25 @@
 
 from __future__ import annotations
 
+import base64
 from html import escape
+from pathlib import Path
 from typing import Any, Dict
 
 import gradio as gr  # type: ignore
 
 from . import config
+
+
+def _logo_data_uri(name: str = "logo-128.png") -> str:
+    """Embed project logo for Gradio HTML (no extra static mount)."""
+    path = Path(config.ASSETS_DIR) / name
+    if not path.is_file():
+        path = Path(config.ASSETS_DIR) / "logo.png"
+    if not path.is_file():
+        return ""
+    b64 = base64.b64encode(path.read_bytes()).decode("ascii")
+    return f"data:image/png;base64,{b64}"
 
 
 CSS = r"""
@@ -40,7 +53,18 @@ body, .gradio-container { background: var(--canvas) !important; color: var(--tex
 
 #product-header { padding: .35rem .25rem 1.55rem; }
 .topbar { display: flex; align-items: center; justify-content: space-between; min-height: 2.4rem; }
+.brand { display: flex; align-items: center; gap: .55rem; }
+.brand-logo {
+    width: 36px; height: 36px; border-radius: 10px; object-fit: contain;
+    background: #fff; box-shadow: 0 2px 8px rgba(31,62,49,.08);
+}
 .wordmark { color: var(--text); font-size: 1.02rem; font-weight: 680; letter-spacing: -.02em; }
+.hero-logo-wrap { display: flex; align-items: center; gap: .85rem; margin: 0 0 .35rem; }
+.hero-logo {
+    width: 72px; height: 72px; border-radius: 18px; object-fit: contain;
+    background: #fff7ed; box-shadow: 0 8px 20px rgba(31,62,49,.1);
+    flex: none;
+}
 .privacy-note { display: flex; align-items: center; gap: .52rem; padding: .48rem .72rem; border-radius: 14px; background: var(--accent-soft); color: var(--accent-hover); font-size: .8rem; font-weight: 650; }
 .privacy-dot { width: .5rem; height: .5rem; border-radius: 4px; background: var(--accent); animation: status-breathe 2.2s ease-in-out infinite; }
 .hero { max-width: 800px; padding-top: 2.4rem; }
@@ -283,13 +307,26 @@ def build_ui(app_callbacks: Dict[str, Any]) -> gr.Blocks:
         radius_size="lg",
         font=["-apple-system", "BlinkMacSystemFont", "Segoe UI", "Microsoft YaHei UI", "sans-serif"],
     )
+    logo_uri = _logo_data_uri("logo-128.png")
+    logo_img = (
+        f'<img class="brand-logo" src="{logo_uri}" alt="Mini UFlash" width="36" height="36" />'
+        if logo_uri
+        else ""
+    )
+    hero_logo = (
+        f'<img class="hero-logo" src="{logo_uri}" alt="Mini UFlash logo" width="72" height="72" />'
+        if logo_uri
+        else ""
+    )
     with gr.Blocks(title="Mini UFlash OCR", css=CSS, theme=theme) as blocks:
         gr.HTML(
             '<header id="product-header">'
-            '<div class="topbar"><div class="wordmark">Mini UFlash</div>'
+            f'<div class="topbar"><div class="brand">{logo_img}'
+            '<div class="wordmark">Mini UFlash</div></div>'
             '<div class="privacy-note"><span class="privacy-dot"></span>仅在本机处理</div></div>'
-            '<div class="hero"><p class="eyebrow">本地文档识别</p>'
-            '<h1>从页面到文字，<br class="mobile-break">一步完成。</h1>'
+            f'<div class="hero"><div class="hero-logo-wrap">{hero_logo}'
+            '<div><p class="eyebrow">本地文档识别</p>'
+            '<h1>从页面到文字，<br class="mobile-break">一步完成。</h1></div></div>'
             '<p>上传图片或 PDF，选择稳定版或加速实验版，结果会直接显示在右侧。</p></div>'
             '</header>'
         )

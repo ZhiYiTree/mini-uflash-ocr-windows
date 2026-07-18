@@ -1,7 +1,10 @@
+<p align="center">
+  <img src="assets/logo-256.png" alt="Mini UFlash Logo" width="140" />
+</p>
+
 # Mini UFlash：为 Unlimited-OCR 探索 Windows 本地投机解码
 
 一个面向 **8GB 级 Windows 设备**、受 **DFlash / 混元 OCR** 思路启发的 **Unlimited-OCR 投机解码参考实现**。
-
 > **Research Preview。** 链路可运行、可测量、失败可复现；但**尚未**达到「完整输出下稳定高倍加速」。
 
 仓库：https://github.com/ZhiYiTree/mini-uflash-ocr-windows  
