@@ -128,6 +128,8 @@ body, .gradio-container { background: var(--canvas) !important; color: var(--tex
 #primary-action:active, #pause-action:active, #clear-action:active, .download-button:active { transform: scale(.975); }
 #pause-action { border: 1px solid #bad8cd !important; background: var(--accent-soft) !important; color: var(--accent-hover) !important; font-weight: 680 !important; }
 #pause-action:disabled { border-color: var(--line) !important; background: #f1f4f2 !important; color: #9aa49f !important; opacity: 1 !important; }
+#stop-action { border: 1px solid #e7b4a8 !important; background: #fcefe9 !important; color: #a95039 !important; font-weight: 680 !important; }
+#stop-action:disabled { border-color: var(--line) !important; background: #f1f4f2 !important; color: #9aa49f !important; opacity: 1 !important; }
 #clear-action { background: rgba(118,118,128,.08) !important; color: var(--text) !important; font-weight: 580 !important; }
 button:focus-visible, input:focus-visible, textarea:focus-visible, [tabindex]:focus-visible { outline: 3px solid var(--focus) !important; outline-offset: 2px !important; }
 
@@ -368,23 +370,26 @@ def build_ui(app_callbacks: Dict[str, Any]) -> gr.Blocks:
                         ("均衡 · 更完整一点", "balanced"),
                         ("无损 · 不软截断（未必更快）", "lossless"),
                     ],
-                    value="fast",
+                    value="balanced",
                     label="加速档位",
                     visible=False,
                     elem_id="tier-choice",
                 )
                 gr.HTML(
                     '<div class="experiment-note">'
-                    "加速版使用目标模型验证的草稿前缀；档位：快速≈1.7× 墙钟（可截断），"
-                    "均衡折中，无损对齐完整输出但当前 live 接受率下未必更快。"
+                    "加速版使用目标模型验证的草稿前缀；默认「均衡」减少截断。"
+                    "「停止」会结束当前任务并保留已识别页，可立即导出。"
                     "</div>"
                 )
                 with gr.Row(elem_id="action-row"):
                     btn_run = gr.Button(
-                        "开始识别", variant="primary", scale=4, min_width=0, elem_id="primary-action"
+                        "开始识别", variant="primary", scale=3, min_width=0, elem_id="primary-action"
                     )
                     btn_pause = gr.Button(
                         "暂停", scale=1, min_width=0, interactive=False, elem_id="pause-action"
+                    )
+                    btn_stop = gr.Button(
+                        "停止", scale=1, min_width=0, interactive=False, elem_id="stop-action"
                     )
                     btn_clear = gr.Button("清空", scale=1, min_width=0, elem_id="clear-action")
                 progress_visual = gr.HTML(value=_progress_markup(False), elem_id="recognition-progress")
@@ -426,12 +431,24 @@ def build_ui(app_callbacks: Dict[str, Any]) -> gr.Blocks:
                             show_label=False, elem_id="plain-result",
                         )
 
-                gr.HTML('<div class="export-label">导出</div>')
+                gr.HTML(
+                    '<div class="export-label">导出'
+                    '<span style="font-weight:500;color:var(--muted);margin-left:.4rem">'
+                    '识别中也可下载已完成部分</span></div>'
+                )
                 with gr.Row():
-                    dl_md = gr.DownloadButton("Markdown", value=None, size="sm", elem_classes="download-button")
-                    dl_txt = gr.DownloadButton("纯文本", value=None, size="sm", elem_classes="download-button")
-                    dl_json = gr.DownloadButton("完整数据", value=None, size="sm", elem_classes="download-button")
-                    dl_metrics = gr.DownloadButton("运行指标", value=None, size="sm", elem_classes="download-button")
+                    dl_md = gr.DownloadButton(
+                        "Markdown", value=None, size="sm", elem_classes="download-button"
+                    )
+                    dl_txt = gr.DownloadButton(
+                        "纯文本", value=None, size="sm", elem_classes="download-button"
+                    )
+                    dl_json = gr.DownloadButton(
+                        "完整数据", value=None, size="sm", elem_classes="download-button"
+                    )
+                    dl_metrics = gr.DownloadButton(
+                        "运行指标", value=None, size="sm", elem_classes="download-button"
+                    )
 
                 with gr.Accordion("技术详情", open=False, elem_id="technical-details"):
                     with gr.Tabs():
@@ -468,9 +485,22 @@ def build_ui(app_callbacks: Dict[str, Any]) -> gr.Blocks:
             outputs=[btn_pause, progress_visual],
             queue=False,
         )
+        btn_stop.click(
+            fn=app_callbacks.get(
+                "on_stop_job",
+                lambda: (
+                    gr.update(interactive=False),
+                    gr.update(interactive=False),
+                    _progress_markup(False),
+                    "⏹ 停止请求已发送",
+                ),
+            ),
+            outputs=[btn_pause, btn_stop, progress_visual, run_status],
+            queue=False,
+        )
         start_event = btn_run.click(
             fn=_show_progress,
-            outputs=[progress_visual, btn_pause],
+            outputs=[progress_visual, btn_pause, btn_stop],
             queue=False,
         )
         run_event = start_event.then(
@@ -483,10 +513,17 @@ def build_ui(app_callbacks: Dict[str, Any]) -> gr.Blocks:
                 out_md, out_txt, out_raw, out_metrics, out_log, run_status,
                 dl_md, dl_txt, dl_json, dl_metrics, status_html,
             ],
+            concurrency_limit=1,
+            show_progress="full",
         )
-        run_event.then(fn=_hide_progress, outputs=[progress_visual, btn_pause], queue=False)
+        run_event.then(
+            fn=_hide_progress,
+            outputs=[progress_visual, btn_pause, btn_stop],
+            queue=False,
+        )
+        clear_fn = app_callbacks.get("on_clear") or _clear_all
         btn_clear.click(
-            fn=app_callbacks.get("on_clear", _clear_all),
+            fn=clear_fn,
             outputs=[
                 input_file, input_preview, out_md, out_txt, out_raw,
                 out_metrics, out_log, run_status, load_status,
@@ -549,11 +586,19 @@ def _progress_markup(running: bool, paused: bool = False) -> str:
 
 
 def _show_progress():
-    return _progress_markup(True), gr.update(value="暂停", interactive=True)
+    return (
+        _progress_markup(True),
+        gr.update(value="暂停", interactive=True),
+        gr.update(interactive=True),
+    )
 
 
 def _hide_progress():
-    return _progress_markup(False), gr.update(value="暂停", interactive=False)
+    return (
+        _progress_markup(False),
+        gr.update(value="暂停", interactive=False),
+        gr.update(interactive=False),
+    )
 
 
 def render_status_html(report: config.EnvReport) -> str:

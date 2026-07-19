@@ -54,6 +54,11 @@ from .ui import build_ui, render_status_html
 
 _log = logging.getLogger(__name__)
 _PAUSE_EVENT = threading.Event()
+_CANCEL_EVENT = threading.Event()
+
+
+class JobCancelled(Exception):
+    """Raised when the user clicks 停止 during an OCR job."""
 
 
 def _setup_logging() -> None:
@@ -143,6 +148,8 @@ def on_toggle_pause():
     """Pause or resume the active OCR loop without discarding completed pages."""
     from .ui import _progress_markup
 
+    if _CANCEL_EVENT.is_set():
+        return gr.update(value="暂停", interactive=False), _progress_markup(False)
     if _PAUSE_EVENT.is_set():
         _PAUSE_EVENT.clear()
         return gr.update(value="暂停"), _progress_markup(True)
@@ -150,9 +157,84 @@ def on_toggle_pause():
     return gr.update(value="继续"), _progress_markup(True, paused=True)
 
 
+def on_stop_job():
+    """Request cooperative cancel; loops check _CANCEL_EVENT between pages/steps."""
+    from .ui import _progress_markup
+
+    _CANCEL_EVENT.set()
+    _PAUSE_EVENT.clear()  # unblock a paused wait so cancel can be observed
+    return (
+        gr.update(value="暂停", interactive=False),
+        gr.update(interactive=False),
+        _progress_markup(False),
+        "⏹ 正在停止…已完成的页会保留并可导出。",
+    )
+
+
 def _wait_if_paused() -> None:
-    while _PAUSE_EVENT.is_set():
-        time.sleep(0.15)
+    while _PAUSE_EVENT.is_set() and not _CANCEL_EVENT.is_set():
+        time.sleep(0.12)
+    if _CANCEL_EVENT.is_set():
+        raise JobCancelled()
+
+
+def _raise_if_cancelled() -> None:
+    if _CANCEL_EVENT.is_set():
+        raise JobCancelled()
+
+
+def _file_update(path: Optional[Path]):
+    """Gradio DownloadButton value; keep previous if path missing."""
+    if path is None:
+        return gr.update()
+    try:
+        p = Path(path).resolve()
+        if p.is_file():
+            return gr.update(value=str(p))
+    except Exception:
+        pass
+    return gr.update()
+
+
+def _save_bundle(
+    run_dir: Path,
+    *,
+    mode: str,
+    input_type: str,
+    result: StableResult,
+    metrics: Dict[str, Any],
+    report: config.EnvReport,
+    log_extra: str = "",
+) -> Dict[str, Path]:
+    """Write current result set so export works mid-run and after cancel."""
+    rj = build_result_json(
+        mode,
+        input_type,
+        result.markdown,
+        result.plain_text,
+        result.elapsed_seconds,
+        result.generated_tokens,
+        pages=[p.__dict__ for p in result.pages],
+        mini_uflash=metrics if "dflash" in mode or "mini_uflash" in mode else None,
+    )
+    files = save_result(
+        run_dir,
+        markdown=result.markdown or "",
+        plain_text=result.plain_text or "",
+        raw_output=result.raw_output or "",
+        result_json=rj,
+        metrics_json=metrics,
+    )
+    log = _build_log(
+        mode,
+        result.elapsed_seconds,
+        result.generated_tokens,
+        len(result.pages),
+        report,
+        extra=log_extra,
+    )
+    save_log(run_dir, log)
+    return files
 
 
 def on_run(
@@ -162,7 +244,7 @@ def on_run(
     preset,
     max_tokens,
     probe_tokens,
-    tier="fast",
+    tier="balanced",
     progress=gr.Progress(),
 ):
     """Run OCR on the uploaded file.
@@ -170,6 +252,7 @@ def on_run(
     Yields partial PDF text page by page, followed by the final downloads.
     """
     _PAUSE_EVENT.clear()
+    _CANCEL_EVENT.clear()
     # Validate input.
     if file_path is None:
         yield _run_error("⚠️ 请先上传图片或 PDF")
@@ -177,7 +260,8 @@ def on_run(
 
     if not MODEL_MANAGER.is_loaded:
         try:
-            progress(0, desc="首次使用，正在准备本地模型")
+            if progress is not None:
+                progress(0, desc="首次使用，正在准备本地模型")
             MODEL_MANAGER.load(model_path_str or config.unlimited_ocr_path())
         except Exception as e:
             yield _run_error(f"模型未能加载：{e}")
@@ -191,180 +275,322 @@ def on_run(
     file_path = Path(file_path)
     is_pdf_input = is_pdf(file_path)
     is_precise = mode == "Mini UFlash 精确模式"
-    # Normalize tier; default product path is wall-clock first (fast).
-    tier_key = str(tier or "fast").strip().lower()
+    tier_key = str(tier or "balanced").strip().lower()
     if tier_key not in ("fast", "balanced", "lossless"):
-        tier_key = "fast"
+        tier_key = "balanced"
 
     report = _refresh_env_report()
     report.mode = f"{mode} · {tier_key}" if is_precise else mode
 
-    # Create output directory.
     run_dir = create_run_dir()
     save_input(file_path, run_dir)
-
-    started = time.perf_counter()
-    log_lines: list[str] = []
+    cancelled = False
+    result: Optional[StableResult] = None
+    metrics_payload: Dict[str, Any] = {}
 
     try:
         if not is_precise:
-            # ---- Stable mode (image or PDF) ----
-            result = None
-            metrics_dict = {}
-            for partial, metrics_dict, complete in _iter_stable(
+            for partial, metrics_payload, complete in _iter_stable(
                 handles, file_path, run_dir, preset, max_tokens, progress,
             ):
                 result = partial
-                if not complete:
-                    yield _partial_response(
-                        partial, report,
-                        f"已识别 {len(partial.pages)} 页，文字已显示；正在继续…",
-                    )
+                files = _save_bundle(
+                    run_dir,
+                    mode="stable",
+                    input_type="pdf" if is_pdf_input else "image",
+                    result=partial,
+                    metrics={
+                        "mode": "stable",
+                        "elapsed_seconds": partial.elapsed_seconds,
+                        "generated_tokens": partial.generated_tokens,
+                        "pages": len(partial.pages),
+                        "vram_gb": getattr(handles, "vram_gb", 0),
+                        "attention_backend": getattr(handles, "attention_backend", ""),
+                        "complete": complete,
+                    },
+                    report=report,
+                )
+                status = (
+                    f"已识别 {len(partial.pages)} 页"
+                    + ("，完成。" if complete else "，文字已显示；正在继续…")
+                )
+                yield _stream_response(partial, report, status, files, metrics_mode="stable")
+                if complete:
+                    break
             if result is None:
                 raise RuntimeError("没有生成任何识别页面")
-            md = result.markdown
-            txt = result.plain_text
-            raw = result.raw_output
-            met = format_metrics_report(result.to_dict(), mode="stable")
-            log = _build_log("stable", result.elapsed_seconds, result.generated_tokens,
-                             len(result.pages), report)
-
-            # Save files.
-            rj = build_result_json(
-                "stable", "pdf" if is_pdf_input else "image",
-                md, txt, result.elapsed_seconds, result.generated_tokens,
-                pages=[p.__dict__ for p in result.pages],
+            met = format_metrics_report(
+                {
+                    "mode": "stable",
+                    "elapsed_seconds": result.elapsed_seconds,
+                    "generated_tokens": result.generated_tokens,
+                    "pages": [p.__dict__ for p in result.pages],
+                },
+                mode="stable",
             )
-            stable_metrics = {
-                "mode": "stable",
-                "elapsed_seconds": result.elapsed_seconds,
-                "generated_tokens": result.generated_tokens,
-                "pages": len(result.pages),
-                "vram_gb": handles.vram_gb,
-                "attention_backend": handles.attention_backend,
-            }
-            files = save_result(run_dir, markdown=md, plain_text=txt,
-                                raw_output=raw, result_json=rj,
-                                metrics_json=stable_metrics)
-            save_log(run_dir, log)
-
-            # Downloads.
-            dl_md = str(files.get("result.md", ""))
-            dl_txt = str(files.get("result.txt", ""))
-            dl_json = str(files.get("result.json", ""))
-            dl_met = str(files.get("metrics.json", ""))
-
+            log = _build_log(
+                "stable",
+                result.elapsed_seconds,
+                result.generated_tokens,
+                len(result.pages),
+                report,
+            )
+            files = _save_bundle(
+                run_dir,
+                mode="stable",
+                input_type="pdf" if is_pdf_input else "image",
+                result=result,
+                metrics={
+                    "mode": "stable",
+                    "elapsed_seconds": result.elapsed_seconds,
+                    "generated_tokens": result.generated_tokens,
+                    "pages": len(result.pages),
+                    "vram_gb": getattr(handles, "vram_gb", 0),
+                    "attention_backend": getattr(handles, "attention_backend", ""),
+                },
+                report=report,
+            )
             status_parts = [
                 "识别完成",
                 f"耗时 {result.elapsed_seconds:.1f}s",
                 f"{result.generated_tokens} tokens",
                 f"{len(result.pages)} 页" if is_pdf_input else "",
+                f"导出目录 {run_dir.name}",
             ]
             status = " | ".join(p for p in status_parts if p)
-            yield (md, txt, raw, met, log, status,
-                   dl_md, dl_txt, dl_json, dl_met,
-                   render_status_html(report))
+            yield _final_response(result, report, status, files, met, log)
             return
 
-        else:
-            # ---- Stable DFlash (verified prefix + periodic resync) ----
-            result = None
-            dflash_metrics = {}
-            for partial, dflash_metrics, complete in _iter_stable_dflash(
-                handles,
-                file_path,
+        # ---- Stable DFlash ----
+        for partial, metrics_payload, complete in _iter_stable_dflash(
+            handles,
+            file_path,
+            run_dir,
+            preset,
+            max_tokens,
+            progress,
+            tier=tier_key,
+        ):
+            result = partial
+            files = _save_bundle(
                 run_dir,
-                preset,
-                max_tokens,
-                progress,
-                tier=tier_key,
-            ):
-                result = partial
-                if not complete:
-                    yield _partial_response(
-                        partial, report,
-                        (
-                            f"稳定 DFlash（{tier_key}）已完成 {len(partial.pages)} 页，文字已显示；"
-                            f"投机提交 {dflash_metrics.get('direct_block_commits', 0)} 次 · "
-                            f"重同步 {dflash_metrics.get('resync_count', 0)} 次"
-                        ),
-                    )
-            if result is None:
-                raise RuntimeError("没有生成任何识别页面")
-            md = result.markdown
-            txt = result.plain_text
-            raw = result.raw_output
-            met = format_metrics_report(
-                dflash_metrics, mode="mini_uflash_stable_dflash"
+                mode="mini_uflash_stable_dflash",
+                input_type="pdf" if is_pdf_input else "image",
+                result=partial,
+                metrics=metrics_payload,
+                report=report,
+                log_extra=f"Tier: {tier_key}",
             )
-            page_total = len(result.pages)
-            log = _build_log(
-                "mini_uflash_stable_dflash", result.elapsed_seconds,
-                result.generated_tokens, page_total, report,
-                extra=(
-                    f"Tier: {tier_key}\n"
-                    f"Verified prefix commits: {dflash_metrics.get('direct_block_commits', 0)}\n"
-                    f"Full-block commits: {dflash_metrics.get('full_block_commits', 0)}\n"
-                    f"Resync count: {dflash_metrics.get('resync_count', 0)}\n"
-                    f"Pure B1 rounds: {dflash_metrics.get('pure_b1_rounds', 0)}\n"
-                    f"Fallback pages: {len(dflash_metrics.get('fallback_pages', []))}\n"
-                    "Policy: verified-prefix crop + periodic prefill resync + tier schedule"
-                ),
-            )
-            rj = build_result_json(
-                "mini_uflash_stable_dflash",
-                "pdf" if is_pdf_input else "image",
-                md, txt, result.elapsed_seconds, result.generated_tokens,
-                pages=[p.__dict__ for p in result.pages],
-                mini_uflash=dflash_metrics,
-            )
-            files = save_result(
-                run_dir, markdown=md, plain_text=txt, raw_output=raw,
-                result_json=rj, metrics_json=dflash_metrics,
-            )
-            save_log(run_dir, log)
-            dl_md = str(files.get("result.md", ""))
-            dl_txt = str(files.get("result.txt", ""))
-            dl_json = str(files.get("result.json", ""))
-            dl_met = str(files.get("metrics.json", ""))
             status = (
-                f"稳定 DFlash（{tier_key}）完成 | {page_total} 页 | "
-                f"耗时 {result.elapsed_seconds:.1f}s | "
-                f"投机提交 {dflash_metrics.get('direct_block_commits', 0)} 次 | "
-                f"重同步 {dflash_metrics.get('resync_count', 0)} 次"
+                f"稳定 DFlash（{tier_key}）已完成 {len(partial.pages)} 页"
+                + (
+                    "，完成。"
+                    if complete
+                    else (
+                        f"；投机提交 {metrics_payload.get('direct_block_commits', 0)} 次 · "
+                        f"重同步 {metrics_payload.get('resync_count', 0)} 次"
+                    )
+                )
             )
-            if dflash_metrics.get("fallback_pages"):
-                status += f" | {len(dflash_metrics['fallback_pages'])} 页回退普通模式"
-            yield (md, txt, raw, met, log, status,
-                   dl_md, dl_txt, dl_json, dl_met,
-                   render_status_html(report))
-            return
+            yield _stream_response(
+                partial,
+                report,
+                status,
+                files,
+                metrics_mode="mini_uflash_stable_dflash",
+                metrics=metrics_payload,
+            )
+            if complete:
+                break
+        if result is None:
+            raise RuntimeError("没有生成任何识别页面")
+        met = format_metrics_report(
+            metrics_payload, mode="mini_uflash_stable_dflash"
+        )
+        page_total = len(result.pages)
+        log = _build_log(
+            "mini_uflash_stable_dflash",
+            result.elapsed_seconds,
+            result.generated_tokens,
+            page_total,
+            report,
+            extra=(
+                f"Tier: {tier_key}\n"
+                f"Verified prefix commits: {metrics_payload.get('direct_block_commits', 0)}\n"
+                f"Full-block commits: {metrics_payload.get('full_block_commits', 0)}\n"
+                f"Resync count: {metrics_payload.get('resync_count', 0)}\n"
+                f"Pure B1 rounds: {metrics_payload.get('pure_b1_rounds', 0)}\n"
+                f"Fallback pages: {len(metrics_payload.get('fallback_pages', []) or [])}\n"
+                f"Output dir: {run_dir}"
+            ),
+        )
+        files = _save_bundle(
+            run_dir,
+            mode="mini_uflash_stable_dflash",
+            input_type="pdf" if is_pdf_input else "image",
+            result=result,
+            metrics=metrics_payload,
+            report=report,
+            log_extra=f"Tier: {tier_key}",
+        )
+        status = (
+            f"稳定 DFlash（{tier_key}）完成 | {page_total} 页 | "
+            f"耗时 {result.elapsed_seconds:.1f}s | "
+            f"投机提交 {metrics_payload.get('direct_block_commits', 0)} 次 | "
+            f"导出 {run_dir.name}"
+        )
+        if metrics_payload.get("fallback_pages"):
+            status += f" | {len(metrics_payload['fallback_pages'])} 页回退普通模式"
+        yield _final_response(result, report, status, files, met, log)
+        return
 
+    except JobCancelled:
+        cancelled = True
+        _log.info("OCR job cancelled by user; pages=%s dir=%s",
+                  0 if result is None else len(result.pages), run_dir)
+        if result is not None and result.pages:
+            files = _save_bundle(
+                run_dir,
+                mode="cancelled",
+                input_type="pdf" if is_pdf_input else "image",
+                result=result,
+                metrics={**(metrics_payload or {}), "cancelled": True},
+                report=report,
+                log_extra="User cancelled",
+            )
+            met = format_metrics_report(
+                metrics_payload or {"mode": "cancelled"},
+                mode="mini_uflash_stable_dflash"
+                if is_precise
+                else "stable",
+            )
+            log = _build_log(
+                "cancelled",
+                result.elapsed_seconds,
+                result.generated_tokens,
+                len(result.pages),
+                report,
+                extra=f"Cancelled. Partial output: {run_dir}",
+            )
+            status = (
+                f"⏹ 已停止 | 保留 {len(result.pages)} 页 | "
+                f"可导出 {run_dir.name}"
+            )
+            yield _final_response(result, report, status, files, met, log)
+        else:
+            yield _run_error("⏹ 已停止（尚无完成任何页）。")
     except torch.cuda.OutOfMemoryError:
         gc.collect()
-        torch.cuda.empty_cache()
+        try:
+            torch.cuda.empty_cache()
+        except Exception:
+            pass
         yield _run_error("❌ 显存不足。请关闭其他 GPU 程序、降低最大生成长度或重新加载模型。")
     except Exception as e:
         _log.exception("OCR run failed")
         tb = traceback.format_exc()
+        # Keep partial exports if any pages finished.
+        if result is not None and result.pages:
+            try:
+                files = _save_bundle(
+                    run_dir,
+                    mode="error_partial",
+                    input_type="pdf" if is_pdf_input else "image",
+                    result=result,
+                    metrics={**(metrics_payload or {}), "error": repr(e)},
+                    report=report,
+                )
+                status = (
+                    f"❌ 运行中断：{e}\n\n"
+                    f"已保留 {len(result.pages)} 页，可从导出按钮或目录下载：\n`{run_dir}`"
+                )
+                yield _final_response(
+                    result,
+                    report,
+                    status,
+                    files,
+                    format_metrics_report(metrics_payload or {}, mode="stable"),
+                    _build_log("error", result.elapsed_seconds, result.generated_tokens,
+                               len(result.pages), report, extra=tb),
+                )
+                return
+            except Exception:
+                pass
         yield _run_error(f"❌ 运行失败：{e}\n\n```\n{tb}\n```")
     finally:
         _PAUSE_EVENT.clear()
+        if not cancelled:
+            _CANCEL_EVENT.clear()
 
 
 def _run_error(message: str):
     """Keep callback errors in the action status slot, not the page header."""
     return (
-        "", "", "", "", "", message,
-        None, None, None, None, render_status_html(_refresh_env_report()),
+        "",
+        "",
+        "",
+        "",
+        "",
+        message,
+        gr.update(),
+        gr.update(),
+        gr.update(),
+        gr.update(),
+        render_status_html(_refresh_env_report()),
     )
 
 
-def _partial_response(result: StableResult, report: config.EnvReport, status: str):
-    """Expose completed pages immediately while keeping downloads final-only."""
+def _stream_response(
+    result: StableResult,
+    report: config.EnvReport,
+    status: str,
+    files: Dict[str, Path],
+    *,
+    metrics_mode: str = "stable",
+    metrics: Optional[Dict[str, Any]] = None,
+):
+    """Page-by-page UI update; downloads point at progressively saved files."""
+    met = ""
+    if metrics:
+        try:
+            met = format_metrics_report(metrics, mode=metrics_mode)
+        except Exception:
+            met = ""
     return (
-        result.markdown, result.plain_text, result.raw_output, "", "", status,
-        None, None, None, None, render_status_html(report),
+        result.markdown or "",
+        result.plain_text or "",
+        result.raw_output or "",
+        met,
+        "",
+        status,
+        _file_update(files.get("result.md")),
+        _file_update(files.get("result.txt")),
+        _file_update(files.get("result.json")),
+        _file_update(files.get("metrics.json")),
+        render_status_html(report),
+    )
+
+
+def _final_response(
+    result: StableResult,
+    report: config.EnvReport,
+    status: str,
+    files: Dict[str, Path],
+    metrics_md: str,
+    log: str,
+):
+    return (
+        result.markdown or "",
+        result.plain_text or "",
+        result.raw_output or "",
+        metrics_md or "",
+        log or "",
+        status,
+        _file_update(files.get("result.md")),
+        _file_update(files.get("result.txt")),
+        _file_update(files.get("result.json")),
+        _file_update(files.get("metrics.json")),
+        render_status_html(report),
     )
 
 
@@ -380,9 +606,14 @@ def _iter_stable(handles, file_path, run_dir, preset, max_tokens, progress=None)
         page_results = []
         started = time.perf_counter()
         for rp in rendered:
+            _raise_if_cancelled()
             _wait_if_paused()
+            _raise_if_cancelled()
             if progress is not None:
-                progress(rp.page_index / max(1, total_pages), desc=f"正在识别第 {rp.page_index + 1}/{total_pages} 页")
+                progress(
+                    rp.page_index / max(1, total_pages),
+                    desc=f"正在识别第 {rp.page_index + 1}/{total_pages} 页",
+                )
             page_scratch = scratch / f"page_{rp.page_index}"
             page_results.append(
                 recognize_image(
@@ -392,12 +623,15 @@ def _iter_stable(handles, file_path, run_dir, preset, max_tokens, progress=None)
                 )
             )
             elapsed = time.perf_counter() - started
-            yield assemble_result(page_results, elapsed), {}, len(page_results) == total_pages
-        if progress is not None:
+            done = len(page_results) == total_pages
+            yield assemble_result(page_results, elapsed), {}, done
+            if done:
+                break
+        if progress is not None and not _CANCEL_EVENT.is_set():
             progress(1, desc="PDF 识别完成")
-        # Cleanup temp images.
         cleanup_dir(scratch)
     else:
+        _raise_if_cancelled()
         started = time.perf_counter()
         page_result = recognize_image(
             handles, file_path, scratch,
@@ -492,10 +726,12 @@ def _iter_stable_dflash(
     tier_key = str(tier or "fast").strip().lower() or "fast"
 
     for rendered in rendered_iter:
+        _raise_if_cancelled()
         page_index = int(rendered.page_index)
 
         def _page_progress(info, index=page_index):
             _wait_if_paused()
+            _raise_if_cancelled()
             if progress is None:
                 return
             inner = info.get("generated", 0) / max(1, info.get("target", 1))
@@ -526,6 +762,8 @@ def _iter_stable_dflash(
                 generated_tokens=dflash.generated_tokens,
             )
             metric = dflash.to_dict()
+        except JobCancelled:
+            raise
         except Exception as dflash_error:
             _log.exception(
                 "Stable DFlash failed on page %d; using stable fallback",
@@ -656,13 +894,9 @@ def main() -> None:
         "on_load_model": on_load_model,
         "on_unload_model": on_unload_model,
         "on_toggle_pause": on_toggle_pause,
+        "on_stop_job": on_stop_job,
         "on_run": on_run,
-        "on_clear": lambda: (
-            None, gr.update(value=None, visible=False),
-            "*识别结果会显示在这里。*", "", "", "", "",
-            "选择文件后，点击“识别文档”即可。",
-            None, None, None, None, None,
-        ),
+        "on_clear": None,  # use ui._clear_all
     }
     ui = build_ui(callbacks)
 
@@ -670,13 +904,22 @@ def main() -> None:
     favicon = config.ASSETS_DIR / "logo-64.png"
     if not favicon.is_file():
         favicon = config.ASSETS_DIR / "logo.png"
+    # Downloads live under webapp/outputs — must be allowed for DownloadButton.
+    allowed = [
+        str(config.ASSETS_DIR.resolve()),
+        str(config.OUTPUTS_DIR.resolve()),
+        str(config.WEBAPP_DIR.resolve()),
+        str(config.PROJECT_ROOT.resolve()),
+    ]
+    config.OUTPUTS_DIR.mkdir(parents=True, exist_ok=True)
     launch_kwargs = {
         "server_name": config.HOST,
         "server_port": config.PORT,
         "share": False,
         "prevent_thread_lock": False,
         "show_error": True,
-        "allowed_paths": [str(config.ASSETS_DIR)],
+        "allowed_paths": allowed,
+        "max_threads": 8,
     }
     if favicon.is_file():
         launch_kwargs["favicon_path"] = str(favicon)
