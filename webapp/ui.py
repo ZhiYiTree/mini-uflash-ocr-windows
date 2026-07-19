@@ -401,7 +401,14 @@ def build_ui(app_callbacks: Dict[str, Any]) -> gr.Blocks:
                         value="gundam",
                         label="识别版式",
                     )
-                    max_tokens_slider = gr.Slider(256, 8192, value=4096, step=256, label="最长输出")
+                    max_tokens_slider = gr.Slider(
+                        256,
+                        4096,
+                        value=1536,
+                        step=128,
+                        label="最长输出（8GB 建议 ≤1536，过大易 OOM）",
+                    )
+
                     probe_tokens_slider = gr.Slider(
                         32, 512, value=256, step=16, label="研究探针长度", visible=False
                     )

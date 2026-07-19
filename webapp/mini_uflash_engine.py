@@ -1293,6 +1293,15 @@ def run_stable_dflash_mode(
         handles.model.config.sliding_window = original_sw
         if prepared.scratch_dir.exists():
             shutil.rmtree(prepared.scratch_dir, ignore_errors=True)
+        # Free KV / cache residuum between pages (8GB).
+        try:
+            import gc as _gc
+
+            _gc.collect()
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+        except Exception:
+            pass
 
     raw = handles.tokenizer.decode(generated, skip_special_tokens=False)
     markdown = clean_markdown(raw)

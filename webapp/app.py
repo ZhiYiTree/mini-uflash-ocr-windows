@@ -51,6 +51,13 @@ from .export_utils import (
 )
 from .metrics import format_metrics_report, format_run_log
 from .ui import build_ui, render_status_html
+from .vram_utils import (
+    clamp_max_length,
+    empty_cuda,
+    is_cuda_oom,
+    mem_info_gb,
+    oom_user_message,
+)
 
 _log = logging.getLogger(__name__)
 _PAUSE_EVENT = threading.Event()
@@ -140,8 +147,15 @@ def on_load_model(model_path_str, _status, progress=gr.Progress()):
 def on_unload_model():
     """Unload the model and free VRAM."""
     MODEL_MANAGER.unload()
+    empty_cuda()
+    free_gb, total_gb = mem_info_gb()
     report = _refresh_env_report()
-    return "模型已卸载", render_status_html(report)
+    msg = (
+        f"模型已卸载并释放缓存。显存约空闲 {free_gb:.1f}/{total_gb:.1f} GB"
+        if total_gb > 0
+        else "模型已卸载"
+    )
+    return msg, render_status_html(report)
 
 
 def on_toggle_pause():
@@ -279,6 +293,28 @@ def on_run(
     if tier_key not in ("fast", "balanced", "lossless"):
         tier_key = "balanced"
 
+    # 8GB safety: UI default 4096 will OOM with Unlimited-OCR + drafter + KV.
+    max_tokens = clamp_max_length(int(max_tokens or 2048))
+    free_gb, total_gb = mem_info_gb()
+    _log.info(
+        "OCR start max_length=%s free_vram=%.2fGB total=%.2fGB tier=%s mode=%s",
+        max_tokens,
+        free_gb,
+        total_gb,
+        tier_key if is_precise else "-",
+        mode,
+    )
+    if free_gb > 0 and free_gb < 1.2:
+        empty_cuda()
+        free_gb, _ = mem_info_gb()
+        if free_gb < 0.9:
+            yield _run_error(
+                oom_user_message(
+                    "启动前空闲显存过低，已拒绝开始。请先「释放显存」或关闭其它 GPU 程序。"
+                )
+            )
+            return
+
     report = _refresh_env_report()
     report.mode = f"{mode} · {tier_key}" if is_precise else mode
 
@@ -289,6 +325,7 @@ def on_run(
     metrics_payload: Dict[str, Any] = {}
 
     try:
+        empty_cuda()
         if not is_precise:
             for partial, metrics_payload, complete in _iter_stable(
                 handles, file_path, run_dir, preset, max_tokens, progress,
@@ -448,6 +485,7 @@ def on_run(
         cancelled = True
         _log.info("OCR job cancelled by user; pages=%s dir=%s",
                   0 if result is None else len(result.pages), run_dir)
+        empty_cuda()
         if result is not None and result.pages:
             files = _save_bundle(
                 run_dir,
@@ -479,16 +517,51 @@ def on_run(
             yield _final_response(result, report, status, files, met, log)
         else:
             yield _run_error("⏹ 已停止（尚无完成任何页）。")
-    except torch.cuda.OutOfMemoryError:
-        gc.collect()
-        try:
-            torch.cuda.empty_cache()
-        except Exception:
-            pass
-        yield _run_error("❌ 显存不足。请关闭其他 GPU 程序、降低最大生成长度或重新加载模型。")
     except Exception as e:
+        if is_cuda_oom(e):
+            _log.exception("CUDA OOM during OCR")
+            empty_cuda()
+            # Prefer partial export if any page finished.
+            if result is not None and result.pages:
+                try:
+                    files = _save_bundle(
+                        run_dir,
+                        mode="oom_partial",
+                        input_type="pdf" if is_pdf_input else "image",
+                        result=result,
+                        metrics={**(metrics_payload or {}), "oom": True},
+                        report=report,
+                    )
+                    status = (
+                        oom_user_message(
+                            f"已保留 **{len(result.pages)}** 页，可导出目录：`{run_dir.name}`"
+                        )
+                    )
+                    yield _final_response(
+                        result,
+                        report,
+                        status,
+                        files,
+                        format_metrics_report(
+                            metrics_payload or {}, mode="stable"
+                        ),
+                        _build_log(
+                            "oom",
+                            result.elapsed_seconds,
+                            result.generated_tokens,
+                            len(result.pages),
+                            report,
+                            extra=str(e),
+                        ),
+                    )
+                    return
+                except Exception:
+                    pass
+            yield _run_error(oom_user_message())
+            return
         _log.exception("OCR run failed")
         tb = traceback.format_exc()
+        empty_cuda()
         # Keep partial exports if any pages finished.
         if result is not None and result.pages:
             try:
@@ -615,13 +688,31 @@ def _iter_stable(handles, file_path, run_dir, preset, max_tokens, progress=None)
                     desc=f"正在识别第 {rp.page_index + 1}/{total_pages} 页",
                 )
             page_scratch = scratch / f"page_{rp.page_index}"
-            page_results.append(
-                recognize_image(
-                    handles, rp.image_path, page_scratch,
-                    preset_name=preset, max_length=max_tokens,
-                    page_index=rp.page_index,
+            try:
+                page_results.append(
+                    recognize_image(
+                        handles, rp.image_path, page_scratch,
+                        preset_name=preset, max_length=max_tokens,
+                        page_index=rp.page_index,
+                    )
                 )
-            )
+            except Exception as exc:
+                if is_cuda_oom(exc):
+                    empty_cuda()
+                    # Retry once at shorter budget.
+                    short = min(int(max_tokens), 1024)
+                    _log.warning("OOM on stable page %s; retry max_length=%s",
+                                 rp.page_index + 1, short)
+                    page_results.append(
+                        recognize_image(
+                            handles, rp.image_path, page_scratch,
+                            preset_name=preset, max_length=short,
+                            page_index=rp.page_index,
+                        )
+                    )
+                else:
+                    raise
+            empty_cuda()
             elapsed = time.perf_counter() - started
             done = len(page_results) == total_pages
             yield assemble_result(page_results, elapsed), {}, done
@@ -630,16 +721,29 @@ def _iter_stable(handles, file_path, run_dir, preset, max_tokens, progress=None)
         if progress is not None and not _CANCEL_EVENT.is_set():
             progress(1, desc="PDF 识别完成")
         cleanup_dir(scratch)
+        empty_cuda()
     else:
         _raise_if_cancelled()
         started = time.perf_counter()
-        page_result = recognize_image(
-            handles, file_path, scratch,
-            preset_name=preset, max_length=max_tokens,
-        )
+        try:
+            page_result = recognize_image(
+                handles, file_path, scratch,
+                preset_name=preset, max_length=max_tokens,
+            )
+        except Exception as exc:
+            if is_cuda_oom(exc):
+                empty_cuda()
+                short = min(int(max_tokens), 1024)
+                page_result = recognize_image(
+                    handles, file_path, scratch,
+                    preset_name=preset, max_length=short,
+                )
+            else:
+                raise
         elapsed = time.perf_counter() - started
         result = assemble_result([page_result], elapsed)
         cleanup_dir(scratch)
+        empty_cuda()
         yield result, {}, True
 
 
@@ -807,6 +911,8 @@ def _iter_stable_dflash(
 
         page_results.append(page_result)
         page_metrics.append(metric)
+        # Drop per-page GPU residuum before the next prefill (critical on 8GB).
+        empty_cuda()
         elapsed = time.perf_counter() - started
         combined = assemble_result(page_results, elapsed)
         aggregate = _aggregate_dflash_metrics(
@@ -846,6 +952,7 @@ def _iter_stable_dflash(
         yield combined, aggregate, aggregate["complete"]
 
     cleanup_dir(config.WEBAPP_DIR / "_direct_fallback")
+    empty_cuda()
 
 
 def _build_log(mode, elapsed, tokens, pages, report, extra=""):

@@ -49,11 +49,12 @@ TIER_PRESETS: Dict[str, Dict[str, Any]] = {
         "page_degrade_enabled": True,
     },
     "lossless": {
-        # Honest acceleration: no soft truncation; length only hard-capped by max_length.
+        # Prefer full max_length, but keep a modest hard cap so 8GB laptops
+        # do not explode KV on long pages (UI still clamps max_length).
         "block_size": 4,
-        "max_block_size": 6,
+        "max_block_size": 4,
         "resync_every": 192,
-        "length_hard_cap": 0,  # disabled → use full max_length budget
+        "length_hard_cap": 1536,
         "length_soft_cap": 0,
         "low_tau_b1_threshold": 0.75,
         "low_tau_window": 10,
